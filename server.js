@@ -9,17 +9,17 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
 
-// Serve static public folder
+// Serve public folder
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Send index.html on GET /
+// Serve index.html
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
 app.use(express.json());
 
-// Load players DB
+// Load players
 let playersPool = [];
 try {
   playersPool = JSON.parse(fs.readFileSync(path.join(__dirname, 'players.json'), 'utf8'));
@@ -30,14 +30,16 @@ try {
     { name: "Manuel Neuer", position: "GK", basePrice: 40 },
     { name: "Virgil van Dijk", position: "CB", basePrice: 55 },
     { name: "Mohamed Salah", position: "RW", basePrice: 60 },
-    { name: "Kylian Mbappé", position: "CF", basePrice: 80 },
+    { name: "Kylian Mbappé", position: "CF", basePrice: 80 }
   ];
 }
 
-// Utility: pick random player by position
-function pickPlayerForPosition(roomState, pos){
-  const available = playersPool.filter(p => p.position === pos && !roomState.soldPlayers.has(p.name));
-  if (available.length === 0) return null;
+// Utility
+function pickPlayerForPosition(roomState, pos) {
+  const available = playersPool.filter(
+    p => p.position === pos && !roomState.soldPlayers.has(p.name)
+  );
+  if (!available.length) return null;
   return available[Math.floor(Math.random() * available.length)];
 }
 
@@ -47,9 +49,9 @@ const rooms = {};
 io.on('connection', socket => {
   console.log('connected:', socket.id);
 
-  socket.on('createRoom', ({roomId, capacity, username}, cb) => {
-    if (rooms[roomId]) return cb({ ok:false, msg:'Room exists' });
-    if (capacity < 3 || capacity > 6) return cb({ ok:false, msg:'3-6 only' });
+  socket.on('createRoom', ({ roomId, capacity, username }, cb) => {
+    if (rooms[roomId]) return cb({ ok: false, msg: 'Room exists' });
+    if (capacity < 3 || capacity > 6) return cb({ ok: false, msg: '3-6 only' });
 
     rooms[roomId] = {
       id: roomId,
@@ -67,26 +69,132 @@ io.on('connection', socket => {
     rooms[roomId].players[socket.id] = player;
     rooms[roomId].order.push(socket.id);
 
-    cb({ ok:true });
+    cb({ ok: true });
     io.to(roomId).emit('roomUpdate', rooms[roomId]);
   });
 
-  socket.on('joinRoom', ({roomId, username}, cb) => {
+  socket.on('joinRoom', ({ roomId, username }, cb) => {
     const room = rooms[roomId];
-    if (!room) return cb({ ok:false, msg:'Not found' });
-    if (Object.keys(room.players).length >= room.capacity) return cb({ ok:false, msg:'Full' });
+    if (!room) return cb({ ok: false, msg: 'Not found' });
+    if (Object.keys(room.players).length >= room.capacity)
+      return cb({ ok: false, msg: 'Full' });
 
     socket.join(roomId);
     const player = { id: socket.id, username, balance: 1000, team: [], skipped: false };
     room.players[socket.id] = player;
     room.order.push(socket.id);
 
-    cb({ ok:true });
+    cb({ ok: true });
     io.to(roomId).emit('roomUpdate', room);
   });
 
+  // START GAME
+  socket.on('startGame', ({ roomId }) => {
+    const room = rooms[roomId];
+    if (!room) return;
+    if (socket.id !== room.host) return;
+    if (Object.keys(room.players).length < 2) return;
+
+    room.phase = 'running';
+    io.to(roomId).emit('roomUpdate', room);
+
+    startNextAuction(roomId);
+  });
+
+  // BIDDING
+  socket.on('bid', ({ roomId, amount }, cb) => {
+    const room = rooms[roomId];
+    if (!room || !room.currentAuction) return cb({ ok: false });
+
+    const auction = room.currentAuction;
+    const player = room.players[socket.id];
+    if (!player) return cb({ ok: false });
+
+    if (amount > player.balance) return cb({ ok: false, msg: 'Not enough balance' });
+
+    auction.currentBid = amount;
+    auction.highestBidder = socket.id;
+
+    io.to(roomId).emit('auctionUpdate', auction);
+    cb({ ok: true });
+  });
+
+  // Skip
+  socket.on('skip', ({ roomId }) => {
+    const room = rooms[roomId];
+    if (!room || !room.currentAuction) return;
+
+    room.players[socket.id].skipped = true;
+
+    checkIfOnlyOneLeft(roomId);
+  });
+
+  socket.on('disconnect', () => {
+    for (const rId of Object.keys(rooms)) {
+      const room = rooms[rId];
+      if (room.players[socket.id]) {
+        delete room.players[socket.id];
+        room.order = room.order.filter(id => id !== socket.id);
+        io.to(rId).emit('roomUpdate', room);
+
+        if (Object.keys(room.players).length === 0) delete rooms[rId];
+      }
+    }
+  });
 });
 
-// Start server
+// Auction helpers
+function startNextAuction(roomId) {
+  const room = rooms[roomId];
+  if (!room) return;
+
+  for (const p of Object.values(room.players)) p.skipped = false;
+
+  const positions = Array.from(new Set(playersPool.map(p => p.position)));
+  const pos = positions[Math.floor(Math.random() * positions.length)];
+  const picked = pickPlayerForPosition(room, pos);
+  if (!picked) return startNextAuction(roomId);
+
+  room.currentAuction = {
+    position: pos,
+    player: picked,
+    basePrice: picked.basePrice,
+    currentBid: picked.basePrice,
+    highestBidder: null
+  };
+
+  io.to(roomId).emit('auctionStart', room.currentAuction);
+}
+
+function checkIfOnlyOneLeft(roomId) {
+  const room = rooms[roomId];
+  if (!room || !room.currentAuction) return;
+
+  const active = Object.values(room.players).filter(p => !p.skipped);
+
+  if (active.length === 1) {
+    const winner = active[0];
+    const auction = room.currentAuction;
+
+    winner.balance -= auction.currentBid;
+    winner.team.push({
+      name: auction.player.name,
+      price: auction.currentBid
+    });
+
+    room.soldPlayers.add(auction.player.name);
+    room.currentAuction = null;
+
+    io.to(roomId).emit('auctionWon', {
+      winner: winner.username,
+      player: auction.player.name,
+      price: auction.currentBid
+    });
+
+    setTimeout(() => startNextAuction(roomId), 1500);
+  }
+}
+
+// Start
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+server.listen(PORT, () => console.log(`Running on port ${PORT}`));
