@@ -9,8 +9,14 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
 
-app.use(express.static(path.join(__dirname, '../public'))); // public stays in root
+// Serve static files from public (in root)
+app.use(express.static(path.join(__dirname, '../public')));
 app.use(express.json());
+
+// Route root '/' to index.html
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, '../public', 'index.html'));
+});
 
 // Load sample players DB (you can replace players.json in Replit)
 let playersPool = [];
@@ -84,9 +90,8 @@ io.on('connection', socket => {
     startNextAuction(roomId);
   });
 
-  // ... rest of the server.js code stays the same ...
-  // just make sure any file references (like players.json) use path.join(__dirname, 'filename')
-
+  // ... rest of your socket events stay the same ...
+  // ensure any file references use path.join(__dirname, 'filename')
 });
 
 const PORT = process.env.PORT || 3000;
