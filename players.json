@@ -1,0 +1,8 @@
+[
+  {"name":"Luka Modric","position":"CM","basePrice":50},
+  {"name":"Cristiano Ronaldo","position":"CF","basePrice":70},
+  {"name":"Manuel Neuer","position":"GK","basePrice":40},
+  {"name":"Virgil van Dijk","position":"CB","basePrice":55},
+  {"name":"Mohamed Salah","position":"RW","basePrice":60},
+  {"name":"Kylian Mbappé","position":"CF","basePrice":80}
+]
