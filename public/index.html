@@ -1,0 +1,62 @@
+<!-- public/index.html -->
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Football Auction</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <div id="app">
+    <div id="lobby" class="card">
+      <h2>Create or Join Room</h2>
+      <input id="username" placeholder="Your name" />
+      <input id="roomId" placeholder="Room ID (any word)" />
+      <select id="capacity"><option value="3">3</option><option value="4">4</option><option value="5">5</option><option value="6">6</option></select>
+      <button id="createBtn">Create Room</button>
+      <button id="joinBtn">Join Room</button>
+      <p id="status"></p>
+    </div>
+
+    <div id="game" style="display:none">
+      <div class="left">
+        <div class="card" id="roomInfo">
+          <h3 id="roomTitle">Room</h3>
+          <div id="playersList"></div>
+          <div id="hostControls" style="margin-top:10px"></div>
+        </div>
+
+        <div class="card">
+          <h3>Auction</h3>
+          <div id="wheelArea">
+            <div id="wheel" class="wheel"></div>
+            <div id="spinOverlay" class="spinOverlay">SPINNING...</div>
+          </div>
+          <div id="currentCard">
+            <h4 id="positionText"></h4>
+            <div id="playerCard"></div>
+            <div id="priceInfo"></div>
+            <div id="auctionTimers"></div>
+            <div id="bidControls">
+              <button id="bidBtn">Bid</button>
+              <button id="skipBtn">Skip</button>
+            </div>
+            <div id="bidNote"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="right">
+        <div class="card">
+          <h3>Chat / Log</h3>
+          <div id="chatLog" class="chat"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="/script.js"></script>
+</body>
+</html>
